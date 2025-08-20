@@ -1,0 +1,142 @@
+version: '3.8'
+
+services:
+  mailinabox:
+    build: .
+    container_name: mailinabox
+    hostname: ${PRIMARY_HOSTNAME:-mail.example.com}
+    privileged: true
+    restart: unless-stopped
+    
+    # Environment variables
+    environment:
+      - PRIMARY_HOSTNAME=${PRIMARY_HOSTNAME:-mail.example.com}
+      - PUBLIC_IP=${PUBLIC_IP:-}
+      - PUBLIC_IPV6=${PUBLIC_IPV6:-}
+      - PRIVATE_IP=${PRIVATE_IP:-}
+      - PRIVATE_IPV6=${PRIVATE_IPV6:-}
+      - STORAGE_USER=${STORAGE_USER:-user-data}
+      - STORAGE_ROOT=${STORAGE_ROOT:-/home/user-data}
+      - NONINTERACTIVE=1
+      - SKIP_NETWORK_CHECKS=1
+      - DISABLE_FIREWALL=1
+      - TZ=${TZ:-UTC}
+    
+    # Port mappings
+    ports:
+      # SMTP
+      - "25:25"     # SMTP
+      - "587:587"   # SMTP Submission
+      - "465:465"   # SMTPS
+      # IMAP/POP3
+      - "143:143"   # IMAP
+      - "993:993"   # IMAPS
+      - "110:110"   # POP3
+      - "995:995"   # POP3S
+      # Web
+      - "80:80"     # HTTP
+      - "443:443"   # HTTPS
+      # DNS
+      - "53:53/tcp" # DNS TCP
+      - "53:53/udp" # DNS UDP
+      # Management
+      - "10222:10222" # Management API
+    
+    # Volume mappings for persistent data
+    volumes:
+      - mailinabox_data:/home/user-data
+      - mailinabox_ssl:/home/user-data/ssl
+      - mailinabox_mail:/home/user-data/mail
+      - mailinabox_dns:/home/user-data/dns
+      - mailinabox_backup:/home/user-data/backup
+      - /etc/localtime:/etc/localtime:ro
+      # Optional: mount host directories for easier access
+      # - ./user-data:/home/user-data
+      # - ./ssl-certificates:/home/user-data/ssl
+    
+    # DNS settings
+    dns:
+      - 127.0.0.1
+      - 8.8.8.8
+      - 8.8.4.4
+    
+    # Network settings
+    networks:
+      - mailinabox_network
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/admin"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5m
+    
+    # System capabilities needed for mail server operations
+    cap_add:
+      - NET_ADMIN
+      - NET_BIND_SERVICE
+      - SYS_ADMIN
+      - DAC_OVERRIDE
+    
+    # Security options
+    security_opt:
+      - apparmor:unconfined
+    
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Database service for applications that need it
+  # Uncomment if you want to use external database instead of SQLite
+  # database:
+  #   image: mariadb:10.6
+  #   container_name: mailinabox_db
+  #   restart: unless-stopped
+  #   environment:
+  #     - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD:-mailinabox_root_pass}
+  #     - MYSQL_DATABASE=${DB_NAME:-mailinabox}
+  #     - MYSQL_USER=${DB_USER:-mailinabox}
+  #     - MYSQL_PASSWORD=${DB_PASSWORD:-mailinabox_pass}
+  #   volumes:
+  #     - mailinabox_db:/var/lib/mysql
+  #   networks:
+  #     - mailinabox_network
+
+  # Optional: Redis for caching (if needed by applications)
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: mailinabox_redis
+  #   restart: unless-stopped
+  #   volumes:
+  #     - mailinabox_redis:/data
+  #   networks:
+  #     - mailinabox_network
+
+# Named volumes for persistent data
+volumes:
+  mailinabox_data:
+    driver: local
+  mailinabox_ssl:
+    driver: local
+  mailinabox_mail:
+    driver: local
+  mailinabox_dns:
+    driver: local
+  mailinabox_backup:
+    driver: local
+  # mailinabox_db:
+  #   driver: local
+  # mailinabox_redis:
+  #   driver: local
+
+# Custom network
+networks:
+  mailinabox_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
